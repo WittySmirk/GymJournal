@@ -178,32 +178,54 @@ func main() {
 			return
 		}
 
-		var name sql.NullString
-		dUser := db.QueryRow("SELECT name FROM user WHERE id = ?", myuser.Id)
-		dUerr := dUser.Scan(&name)
-		if dUerr != nil {
-			fmt.Fprintln(w, dUerr.Error())
-			return
+		if r.Method == "GET" {
+			var name sql.NullString
+			dUser := db.QueryRow("SELECT name FROM user WHERE id = ?", myuser.Id)
+			dUerr := dUser.Scan(&name)
+			if dUerr != nil {
+				fmt.Fprintln(w, dUerr.Error())
+				return
+			}
+
+			if !name.Valid {
+				// If name is not valid ask for name
+				templ, err := template.ParseFiles("templates/makename.html")
+				if err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+					return
+				}
+				templ.Execute(w, nil)
+			}
+
+			myuser.Name = name.String
+
+			data := Data{
+				Name: myuser.Name,
+			}
+
+			templ, err := template.ParseFiles("templates/app.html")
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+
+			templ.Execute(w, data)
+		} else if r.Method == "POST" {
+			validate := validator.New()
+			name := r.FormValue("name")
+			verr := validate.Var(name, "ascii")
+			if verr != nil {
+				http.Error(w, "name not accepted", http.StatusNotAcceptable)
+				return
+			}
+
+			_, derr := db.Exec("UPDATE user SET name = ? WHERE id = ?", name, myuser.Id)
+			if derr != nil {
+				fmt.Fprintln(w, derr.Error())
+				return
+			}
+			http.Redirect(w, r, "/app", http.StatusSeeOther)
 		}
-
-		if !name.Valid {
-			// If name is not valid ask for name
-			fmt.Println("shit is null")
-		}
-
-		myuser.Name = name.String
-
-		data := Data{
-			Name: myuser.Name,
-		}
-
-		templ, err := template.ParseFiles("templates/app.html")
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		templ.Execute(w, data)
 	})
 
 	http.HandleFunc("/app/modal/", func(w http.ResponseWriter, r *http.Request) {

@@ -1,0 +1,23 @@
+<!Doctype html>
+<head>
+	<title>Gym Journal</title>
+	<script src="https://unpkg.com/htmx.org@2.0.2" integrity="sha384-Y7hw+L/jvKeWIRRkqWYfPcvVxHzVzn5REgzbawhxAuQGwX1XWe70vji+VSeHOThJ" crossorigin="anonymous"></script>
+	<link rel="stylesheet" href="/public/app.css"></link>
+</head>
+
+<body>
+	<div class="exerciseButtonGrid" hx-get="/app/exercisebuttons" hx-trigger="load">
+	</div>
+	<div id="modal">
+		<div class="modal-underlay"></div>
+		<form class="modal-form" hx-post="/app" hx-target="body">
+			<h1>Welcome to Gym Journal!</h1>
+			<label class="modal-item" for="name">Your name</label>
+			<input class="modal-item" type="text" id="name" name="name"/>
+			<div class="modal-item">
+				<input type="submit" value="submit" />
+				<button hx-get="/app" hx-target="body">Close</button> 
+			</div>
+		</form>
+	</div>
+</body>
