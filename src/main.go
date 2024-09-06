@@ -1,11 +1,11 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
-	"github.com/gorilla/sessions"
 	"github.com/joho/godotenv"
 	"github.com/markbates/goth"
 	"github.com/markbates/goth/gothic"
@@ -23,6 +23,11 @@ type User struct {
 	Id          string
 	Name        string
 	GoogleEmail string
+}
+
+type Session struct {
+	Id        string
+	ExpiresAt int64
 }
 
 type Workout struct {
@@ -43,7 +48,95 @@ type Data struct {
 }
 
 // TODO: Maybe break into packages to make this more elegant
-// TODO: Implement middleware and provide user context to protected routes (remove repetition and excess queries)
+
+func checksession(db *sql.DB, shouldexist bool, h http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		sessionId, err := r.Cookie("session_id")
+		if err != nil {
+			if err == http.ErrNoCookie {
+				if !shouldexist {
+					h(w, r)
+					return
+				}
+				http.Redirect(w, r, "/", http.StatusSeeOther)
+			}
+			fmt.Fprintln(w, err.Error())
+			return
+		}
+		if shouldexist {
+			var mysession Session
+			mysession.Id = sessionId.Value
+			dSession := db.QueryRow("SELECT expires_at FROM session WHERE id = ?", mysession.Id)
+			dSerr := dSession.Scan(&mysession.ExpiresAt)
+
+			if dSerr != nil {
+				fmt.Fprintln(w, dSerr.Error())
+			}
+
+			// Delete session if expired, update active session if halfway dead
+			if mysession.ExpiresAt < time.Now().Unix() {
+				// Session is expired
+				_, derr := db.Exec("DELETE FROM session WHERE id = ?", mysession.Id)
+				if derr != nil {
+					fmt.Fprintln(w, derr.Error())
+				}
+				http.SetCookie(w, &http.Cookie{
+					Name:     "session_id",
+					Value:    "",
+					Path:     "/",
+					MaxAge:   -1,
+					HttpOnly: true,
+				})
+				http.Redirect(w, r, "/", http.StatusSeeOther)
+			} else if mysession.ExpiresAt-time.Now().Unix() < (7 * 24 * 60 * 60) {
+				newTime := time.Now().Unix() + (15 * 24 * 60 * 60)
+				_, derr := db.Exec("UPDATE session SET expires_at = ? WHERE id = ?", newTime, mysession.Id)
+				if derr != nil {
+					fmt.Fprintln(w, derr.Error())
+					return
+				}
+				http.SetCookie(w, &http.Cookie{
+					Name:     "session_id",
+					Value:    mysession.Id,
+					Path:     "/",
+					MaxAge:   15 * 24 * 60 * 60,
+					HttpOnly: true,
+				})
+			}
+
+			const userKey string = "user"
+			// TODO: Might want to include name in the context if more templates than app eventually need it
+			var myuser User
+			dUser := db.QueryRow("SELECT user_id FROM session WHERE id = ?", mysession.Id)
+			dUerr := dUser.Scan(&myuser.Id)
+			if dUerr != nil {
+				fmt.Fprintln(w, dUerr.Error())
+				return
+			}
+
+			ctx := context.WithValue(r.Context(), userKey, myuser.Id)
+			h(w, r.WithContext(ctx))
+			return
+		}
+		http.Redirect(w, r, "/app", http.StatusSeeOther)
+	}
+}
+
+func getUserFromContext(r *http.Request) *User {
+	const userKey string = "user"
+	userid, ok := r.Context().Value(userKey).(string)
+
+	if !ok {
+		fmt.Println("user id not found in context")
+		return nil
+	}
+
+	user := User{
+		Id: userid,
+	}
+
+	return &user
+}
 
 func main() {
 	err := godotenv.Load()
@@ -62,26 +155,21 @@ func main() {
 	defer db.Close()
 
 	goth.UseProviders(google.New(os.Getenv("GOOGLE_CLIENT_ID"), os.Getenv("GOOGLE_SECRET"), "http://localhost:8080/auth/google/callback"))
-	// Idk if this is actually useful
-	key := "test"
-	store := sessions.NewCookieStore([]byte(key))
-	gothic.Store = store
 
 	fs := http.FileServer(http.Dir("public"))
 	http.Handle("/public/", http.StripPrefix("/public/", fs))
 
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/", checksession(db, false, func(w http.ResponseWriter, r *http.Request) {
 		templ, err := template.ParseFiles("templates/index.html")
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 		templ.Execute(w, nil)
-	})
+	}))
 
 	// Routes dealing with authenitcation
-	http.HandleFunc("/auth/google/callback", func(w http.ResponseWriter, r *http.Request) {
-		// TODO: Check if session exists first
+	http.HandleFunc("/auth/google/callback", checksession(db, false, func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
 		q.Add("provider", "google")
 		r.URL.RawQuery = q.Encode()
@@ -136,20 +224,21 @@ func main() {
 			Name:     "session_id",
 			Value:    sessionId.String(),
 			Path:     "/",
+			MaxAge:   15 * 24 * 60 * 60,
 			HttpOnly: true,
 			Secure:   false, // Change to true in production
 		}
 
 		http.SetCookie(w, cookie)
 		http.Redirect(w, r, "/app", http.StatusTemporaryRedirect)
-	})
+	}))
 
 	http.HandleFunc("/logout/google", func(w http.ResponseWriter, r *http.Request) {
 		gothic.Logout(w, r)
 		http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
 	})
 
-	http.HandleFunc("/auth/google", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/auth/google", checksession(db, false, func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
 		q.Add("provider", "google")
 		r.URL.RawQuery = q.Encode()
@@ -158,23 +247,13 @@ func main() {
 		} else {
 			gothic.BeginAuthHandler(w, r)
 		}
-	})
+	}))
 
 	// Routes dealing with application
-	http.HandleFunc("/app", func(w http.ResponseWriter, r *http.Request) {
-		// Check if session exists and is valid, then get data
-		sessionId, cerr := r.Cookie("session_id")
-		if cerr != nil {
-			fmt.Fprintln(w, cerr.Error())
-			return
-		}
-
-		var myuser User
-		dSession := db.QueryRow("SELECT user_id FROM session WHERE id = ?", sessionId.Value)
-		dSerr := dSession.Scan(&myuser.Id)
-		if dSerr != nil {
-			fmt.Println("this one errored")
-			fmt.Fprintln(w, dSerr.Error())
+	http.HandleFunc("/app", checksession(db, true, func(w http.ResponseWriter, r *http.Request) {
+		myuser := getUserFromContext(r)
+		if myuser == nil {
+			fmt.Println("error context was nil")
 			return
 		}
 
@@ -226,9 +305,9 @@ func main() {
 			}
 			http.Redirect(w, r, "/app", http.StatusSeeOther)
 		}
-	})
+	}))
 
-	http.HandleFunc("/app/modal/", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/app/modal/", checksession(db, true, func(w http.ResponseWriter, r *http.Request) {
 		id := strings.Split(r.URL.Path, "/")[3]
 		if r.Method == "GET" {
 			templ, err := template.ParseFiles("templates/modal.html")
@@ -246,20 +325,9 @@ func main() {
 			}
 		} else if r.Method == "POST" {
 			validate := validator.New()
-			sessionId, cerr := r.Cookie("session_id")
 
-			var myuser User
-			dSession := db.QueryRow("SELECT user_id FROM session WHERE id = ?", sessionId.Value)
-			dSerr := dSession.Scan(&myuser.Id)
-			if dSerr != nil {
-				fmt.Fprintln(w, dSerr.Error())
-				return
-			}
+			myuser := getUserFromContext(r)
 
-			if cerr != nil {
-				fmt.Fprintln(w, cerr.Error())
-				return
-			}
 			if id == "" {
 				name := r.FormValue("name")
 				verr := validate.Var(name, "ascii")
@@ -300,29 +368,17 @@ func main() {
 			}
 			http.Redirect(w, r, "/app", http.StatusSeeOther)
 		}
-	})
+	}))
 
-	http.HandleFunc("/app/exercisebuttons", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/app/exercisebuttons", checksession(db, true, func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "GET" {
-			sessionId, cerr := r.Cookie("session_id")
-			if cerr != nil {
-				fmt.Fprintln(w, cerr.Error())
-				return
-			}
-
 			templ, terr := template.ParseFiles("templates/exercisebuttons.html")
 			if terr != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
 
-			var myuser User
-			dSession := db.QueryRow("SELECT user_id FROM session WHERE id = ?", sessionId.Value)
-			dSerr := dSession.Scan(&myuser.Id)
-			if dSerr != nil {
-				fmt.Fprintln(w, dSerr.Error())
-				return
-			}
+			myuser := getUserFromContext(r)
 
 			var exercises []Exercise
 			dExercises, dEerr := db.Query("SELECT id, name FROM exercise WHERE user_id = ?", myuser.Id)
@@ -345,7 +401,7 @@ func main() {
 			}
 			templ.Execute(w, data)
 		}
-	})
+	}))
 
 	http.HandleFunc("/app/givememodal/", func(w http.ResponseWriter, r *http.Request) {
 		id := strings.Split(r.URL.Path, "/")[3]
