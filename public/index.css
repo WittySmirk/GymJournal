@@ -1,0 +1,22 @@
+.login {
+	display: inline-flex;
+	align-items: center;
+	text-decoration: none;
+	border: 1px;
+	color: black;
+	border-style: solid;
+	border-color: #d3d3d3;
+	border-radius: 0.25rem;
+	padding-right: 10px;
+	padding-bottom: 5px;
+	padding-left: 5px;
+	padding-top: 5px;
+	height: 25px;
+}
+
+.login-image {
+	width: 20px;
+	height: 20px;
+	padding-right: 10px;
+	vertical-align: middle;
+}

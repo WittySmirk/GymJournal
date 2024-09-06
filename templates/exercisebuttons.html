@@ -1,0 +1,4 @@
+{{range .Exercises}}
+<div class="exerciseButton" hx-get="/app/modal/{{.Id}}" hx-target="body" hx-swap="beforeend"><p>{{.Name}}</p></div>
+{{end}}
+<div class="exerciseButton" hx-get="/app/modal" hx-target="body" hx-swap="beforeend"><p>New Exercise</p></div>
