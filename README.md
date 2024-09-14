@@ -1,4 +1,4 @@
-# Gym Jouranl
+# Gym Journal
 
 This is gym journal. An open source tracking web application inspired by Stupid Simple Macro Tracker
 
