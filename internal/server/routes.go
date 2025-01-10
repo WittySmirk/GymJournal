@@ -2,18 +2,27 @@ package server
 
 import (
 	"context"
-	"database/sql"
+	//"database/sql"
+	"encoding/json"
 	"fmt"
-	"github.com/go-playground/validator/v10"
-	"github.com/google/uuid"
-	"github.com/markbates/goth/gothic"
-	"html/template"
+	//	"github.com/go-playground/validator/v10"
+	//	"github.com/google/uuid"
+	//	"github.com/markbates/goth/gothic"
 	"net/http"
-	"strconv"
-	"strings"
+	//	"strconv"
+	//	"strings"
 	"time"
 )
 
+func CorsMiddleWare(n http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*") // Replace "*" with specific origins if needed
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH")
+		w.Header().Set("Access-Control-Allow-Headers", "Accept, Authorization, Content-Type, X-CSRF-Token")
+		w.Header().Set("Access-Control-Allow-Credentials", "false") // Set to "true" if credentials are required
+		n(w, r)
+	}
+}
 func GetUserFromContext(r *http.Request) *User {
 	const userKey string = "user"
 	userid, ok := r.Context().Value(userKey).(string)
@@ -104,26 +113,24 @@ func CheckSession(shouldexist bool, h http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
+// TODO: Refactor to react and not htmx
 func CreateRoutes() http.Handler {
 	mux := http.NewServeMux()
 
 	fs := http.FileServer(http.Dir("public"))
 	mux.Handle("/public/", http.StripPrefix("/public/", fs))
 
-	mux.HandleFunc("/", CheckSession(false, index))
-	mux.HandleFunc("/auth/google/callback", CheckSession(false, CallbackHandle))
-	mux.HandleFunc("/logout/google", LogoutHandle)
-	mux.HandleFunc("/auth/google", CheckSession(false, AuthHandle))
-	mux.HandleFunc("GET /app", CheckSession(true, appGet))
-	mux.HandleFunc("POST /app", CheckSession(true, appPost))
-	mux.HandleFunc("GET /app/modal/{id}", CheckSession(true, appModalGet))
-	mux.HandleFunc("POST /app/modal/{id}", CheckSession(true, appModalPost))
-	mux.HandleFunc("/app/exercisebuttons", CheckSession(true, appExerciseButtons))
-	mux.HandleFunc("/app/givememodal/{id}", CheckSession(true, appGiveModal))
+	//mux.HandleFunc("/", CheckSession(false, index))
+	//mux.HandleFunc("/auth/google/callback", CheckSession(false, CallbackHandle))
+	//mux.HandleFunc("/logout/google", LogoutHandle)
+	//mux.HandleFunc("/auth/google", CheckSession(false, AuthHandle))
+	mux.HandleFunc("GET /app", CorsMiddleWare(appGet))
+	mux.HandleFunc("POST /app", CorsMiddleWare(appPost))
 
 	return mux
 }
 
+/*
 func index(w http.ResponseWriter, r *http.Request) {
 	templ, err := template.ParseFiles("templates/index.html")
 	if err != nil {
@@ -132,77 +139,82 @@ func index(w http.ResponseWriter, r *http.Request) {
 	}
 	templ.Execute(w, nil)
 }
+*/
 
-func CallbackHandle(w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query()
-	q.Add("provider", "google")
-	r.URL.RawQuery = q.Encode()
-	tuser, gerr := gothic.CompleteUserAuth(w, r)
-	if gerr != nil {
-		fmt.Fprintln(w, gerr)
-		return
-	}
-
-	// Check if user exists in db
-	var myuser User
-	db := GetDb()
-	dUser := db.QueryRow("SELECT id, google_email FROM user WHERE google_email = ?", tuser.Email)
-	dberr := dUser.Scan(&myuser.Id, &myuser.GoogleEmail) // See if query can fit into a User if not make an error
-
-	if dberr != nil {
-		if dberr == sql.ErrNoRows {
-			// User does not exist error
-			userId := uuid.New()
-			_, uerr := db.Exec("INSERT INTO user (id, google_email) VALUES (?, ?)", userId, tuser.Email)
-
-			if uerr != nil {
-				fmt.Fprintln(w, uerr)
-				return
-			}
-			myuser.Id = userId.String()
-
-			// Insert default stuff in
-			_, eerr := db.Exec("INSERT INTO exercise (id, user_id, name) VALUES (?, ?, ?), (?, ?, ?), (?, ?, ?)", uuid.New(), myuser.Id, "Bench", uuid.New(), myuser.Id, "Squat", uuid.New(), myuser.Id, "Deadlift")
-			if eerr != nil {
-				fmt.Fprintln(w, eerr)
-				return
-			}
-		} else {
-			// DB just failed or smthn
-			fmt.Fprintln(w, dberr.Error())
+/*
+	func CallbackHandle(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		q.Add("provider", "google")
+		r.URL.RawQuery = q.Encode()
+		tuser, gerr := gothic.CompleteUserAuth(w, r)
+		if gerr != nil {
+			fmt.Fprintln(w, gerr)
 			return
 		}
+
+		// Check if user exists in db
+		var myuser User
+		db := GetDb()
+		dUser := db.QueryRow("SELECT id, google_email FROM user WHERE google_email = ?", tuser.Email)
+		dberr := dUser.Scan(&myuser.Id, &myuser.GoogleEmail) // See if query can fit into a User if not make an error
+
+		if dberr != nil {
+			if dberr == sql.ErrNoRows {
+				// User does not exist error
+				userId := uuid.New()
+				_, uerr := db.Exec("INSERT INTO user (id, google_email) VALUES (?, ?)", userId, tuser.Email)
+
+				if uerr != nil {
+					fmt.Fprintln(w, uerr)
+					return
+				}
+				myuser.Id = userId.String()
+
+				// Insert default stuff in
+				_, eerr := db.Exec("INSERT INTO exercise (id, user_id, name) VALUES (?, ?, ?), (?, ?, ?), (?, ?, ?)", uuid.New(), myuser.Id, "Bench", uuid.New(), myuser.Id, "Squat", uuid.New(), myuser.Id, "Deadlift")
+				if eerr != nil {
+					fmt.Fprintln(w, eerr)
+					return
+				}
+			} else {
+				// DB just failed or smthn
+				fmt.Fprintln(w, dberr.Error())
+				return
+			}
+		}
+
+		// Create session
+		fmt.Println(myuser.Id)
+		sessionId := uuid.New()
+		expiresAt := time.Now().Unix() + (15 * 24 * 60 * 60) // Make session expire in 15 days
+		fmt.Println(expiresAt)
+		_, serr := db.Exec("INSERT INTO session (id, user_id, expires_at) VALUES (?, ?, ?)", sessionId, myuser.Id, expiresAt)
+		if serr != nil {
+			fmt.Fprintln(w, serr)
+			return
+		}
+
+		cookie := &http.Cookie{
+			Name:     "session_id",
+			Value:    sessionId.String(),
+			Path:     "/",
+			MaxAge:   15 * 24 * 60 * 60,
+			HttpOnly: true,
+			Secure:   false, // Change to true in production
+		}
+
+		http.SetCookie(w, cookie)
+		http.Redirect(w, r, "/app", http.StatusTemporaryRedirect)
 	}
-
-	// Create session
-	fmt.Println(myuser.Id)
-	sessionId := uuid.New()
-	expiresAt := time.Now().Unix() + (15 * 24 * 60 * 60) // Make session expire in 15 days
-	fmt.Println(expiresAt)
-	_, serr := db.Exec("INSERT INTO session (id, user_id, expires_at) VALUES (?, ?, ?)", sessionId, myuser.Id, expiresAt)
-	if serr != nil {
-		fmt.Fprintln(w, serr)
-		return
-	}
-
-	cookie := &http.Cookie{
-		Name:     "session_id",
-		Value:    sessionId.String(),
-		Path:     "/",
-		MaxAge:   15 * 24 * 60 * 60,
-		HttpOnly: true,
-		Secure:   false, // Change to true in production
-	}
-
-	http.SetCookie(w, cookie)
-	http.Redirect(w, r, "/app", http.StatusTemporaryRedirect)
-}
-
+*/
+/*
 func LogoutHandle(w http.ResponseWriter, r *http.Request) {
 	gothic.Logout(w, r)
 	http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
 }
+*/
 
+/*
 func AuthHandle(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	q.Add("provider", "google")
@@ -213,195 +225,100 @@ func AuthHandle(w http.ResponseWriter, r *http.Request) {
 		gothic.BeginAuthHandler(w, r)
 	}
 }
+*/
 
 func appGet(w http.ResponseWriter, r *http.Request) {
-	myuser := GetUserFromContext(r)
-	if myuser == nil {
-		fmt.Println("error context was nil")
-		return
-	}
+	// TODO: maybe this works i dont remember/know
+	/*
+			myuser := GetUserFromContext(r)
+			if myuser == nil {
+				fmt.Println("error context was nil")
+				return
+			}
 
-	db := GetDb()
-	var name sql.NullString
-	dUser := db.QueryRow("SELECT name FROM user WHERE id = ?", myuser.Id)
-	dUerr := dUser.Scan(&name)
-	if dUerr != nil {
-		fmt.Fprintln(w, dUerr.Error())
-		return
-	}
 
-	if !name.Valid {
-		// If name is not valid ask for name
-		templ, err := template.ParseFiles("templates/makename.html")
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+		db := GetDb()
+		var name sql.NullString
+		dUser := db.QueryRow("SELECT name FROM user WHERE id = ?", myuser.Id)
+		dUerr := dUser.Scan(&name)
+		if dUerr != nil {
+			fmt.Fprintln(w, dUerr.Error())
 			return
 		}
-		templ.Execute(w, nil)
-	}
 
-	myuser.Name = name.String
+
+			if !name.Valid {
+				// If name is not valid ask for name
+				templ, err := template.ParseFiles("templates/makename.html")
+				if err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+					return
+				}
+				templ.Execute(w, nil)
+			}
+
+
+		myuser.Name = name.String
+	*/
 
 	data := Data{
-		Name: myuser.Name,
+		Name: "wyatt",
+		Exercises: []Exercise{
+			{
+				Id:   "0",
+				Name: "bench",
+			},
+			{
+				Id:   "1",
+				Name: "squat",
+			},
+		},
 	}
 
-	templ, err := template.ParseFiles("templates/app.html")
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+	jsonbytes, jerr := json.Marshal(data)
+	if jerr != nil {
+		http.Error(w, jerr.Error(), http.StatusInternalServerError)
 	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(jsonbytes)
+}
 
-	templ.Execute(w, data)
+type Body struct {
+	Id      string `json:"id"`
+	Message string `json:"message"`
 }
 
 func appPost(w http.ResponseWriter, r *http.Request) {
-	myuser := GetUserFromContext(r)
-	if myuser == nil {
-		fmt.Println("error context was nil")
-		return
-	}
+	decoder := json.NewDecoder(r.Body)
 
-	validate := validator.New()
-	name := r.FormValue("name")
-	verr := validate.Var(name, "ascii")
-	if verr != nil {
-		http.Error(w, "name not accepted", http.StatusNotAcceptable)
-		return
+	var body Body
+	berr := decoder.Decode(&body)
+	if berr != nil {
+		http.Error(w, berr.Error(), http.StatusBadRequest)
 	}
+	fmt.Println(body.Id, body.Message)
 
-	db := GetDb()
-	_, derr := db.Exec("UPDATE user SET name = ? WHERE id = ?", name, myuser.Id)
-	if derr != nil {
-		fmt.Fprintln(w, derr.Error())
-		return
-	}
-	http.Redirect(w, r, "/app", http.StatusSeeOther)
-}
-
-func appModalGet(w http.ResponseWriter, r *http.Request) {
-	id := strings.Split(r.URL.Path, "/")[3]
-	templ, err := template.ParseFiles("templates/modal.html")
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	if id == "" {
-		templ.Execute(w, nil)
-	} else {
-		data := Exercise{
-			Id: id,
+	/*
+		myuser := GetUserFromContext(r)
+		if myuser == nil {
+			fmt.Println("error context was nil")
+			return
 		}
-		templ.Execute(w, data)
-	}
-}
 
-func appModalPost(w http.ResponseWriter, r *http.Request) {
-	id := strings.Split(r.URL.Path, "/")[3]
-	validate := validator.New()
-
-	myuser := GetUserFromContext(r)
-	db := GetDb()
-
-	if id == "" {
+		validate := validator.New()
 		name := r.FormValue("name")
 		verr := validate.Var(name, "ascii")
-		if verr != nil || len(name) == 0 {
-			http.Error(w, "title not accepted", http.StatusNotAcceptable)
-			return
-		}
-		_, derr := db.Exec("INSERT INTO exercise (id, user_id, name) VALUES (?, ?, ?)", uuid.New(), myuser.Id, name)
-		if derr != nil {
-			fmt.Fprintln(w, derr.Error())
-			return
-		}
-	} else {
-		weight := r.FormValue("weight")
-		sets := r.FormValue("sets")
-		reps := r.FormValue("reps")
-
-		convWeight, werr := strconv.Atoi(weight)
-		if werr != nil {
-			http.Error(w, werr.Error(), http.StatusNotAcceptable)
-			return
-		}
-		convSets, serr := strconv.Atoi(sets)
-		if serr != nil {
-			http.Error(w, serr.Error(), http.StatusNotAcceptable)
-			return
-		}
-		convReps, rerr := strconv.Atoi(reps)
-		if rerr != nil {
-			http.Error(w, rerr.Error(), http.StatusNotAcceptable)
-			return
-		}
-		_, derr := db.Exec("INSERT INTO workout (id, user_id, exercise_id, weight, sets, reps, time) VALUES (?, ?, ?, ?, ?, ?, ?)", uuid.New(), myuser.Id, id, convWeight, convSets, convReps, time.Now().Unix())
-		if derr != nil {
-			fmt.Fprintln(w, derr.Error())
-			return
-		}
-	}
-	http.Redirect(w, r, "/app", http.StatusSeeOther)
-}
-
-func appExerciseButtons(w http.ResponseWriter, r *http.Request) {
-	templ, terr := template.ParseFiles("templates/exercisebuttons.html")
-	if terr != nil {
-		http.Error(w, terr.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	myuser := GetUserFromContext(r)
-
-	var exercises []Exercise
-	db := GetDb()
-	dExercises, dEerr := db.Query("SELECT id, name FROM exercise WHERE user_id = ?", myuser.Id)
-	if dEerr != nil {
-		fmt.Fprintln(w, dEerr.Error())
-		return
-	}
-
-	for dExercises.Next() {
-		var ex Exercise
-		err := dExercises.Scan(&ex.Id, &ex.Name)
-		if err != nil {
-			fmt.Fprintln(w, err.Error())
-			return
-		}
-		exercises = append(exercises, ex)
-	}
-	data := Data{
-		Exercises: exercises,
-	}
-	templ.Execute(w, data)
-}
-
-func appGiveModal(w http.ResponseWriter, r *http.Request) {
-	id := strings.Split(r.URL.Path, "/")[3]
-	if id == "" {
-		templ, terr := template.ParseFiles("templates/modal_forms/new_exercise.html")
-		if terr != nil {
-			http.Error(w, terr.Error(), http.StatusInternalServerError)
-			return
-		}
-		templ.Execute(w, nil)
-	} else {
-		templ, terr := template.ParseFiles("templates/modal_forms/exercise.html")
-		if terr != nil {
-			http.Error(w, terr.Error(), http.StatusInternalServerError)
+		if verr != nil {
+			http.Error(w, "name not accepted", http.StatusNotAcceptable)
 			return
 		}
 
-		var exercise Exercise
 		db := GetDb()
-		dExercise := db.QueryRow("SELECT name FROM exercise WHERE id = ?", id)
-		dErr := dExercise.Scan(&exercise.Name)
-		if dErr != nil {
-			fmt.Fprintln(w, dErr.Error())
+		_, derr := db.Exec("UPDATE user SET name = ? WHERE id = ?", name, myuser.Id)
+		if derr != nil {
+			fmt.Fprintln(w, derr.Error())
 			return
 		}
-
-		exercise.Id = id
-		templ.Execute(w, exercise)
-	}
+		http.Redirect(w, r, "/app", http.StatusSeeOther)
+	*/
 }

@@ -8,30 +8,30 @@ import (
 )
 
 type User struct {
-	Id          string
-	Name        string
-	GoogleEmail string
+	Id          string `json:"id"`
+	Name        string `json:"name"`
+	GoogleEmail string `json:"googleEmail"`
 }
 
 type Session struct {
-	Id        string
-	ExpiresAt int64
+	Id        string `json:"id"`
+	ExpiresAt int64  `json:"expiresAt"`
 }
 type Workout struct {
-	Weight int
-	Sets   int
-	Reps   int
+	Weight int `json:"weight"`
+	Sets   int `json:"sets"`
+	Reps   int `json:"reps"`
 }
 
 type Exercise struct {
-	Id       string
-	Name     string
-	Workouts []Workout
+	Id       string    `json:"id"`
+	Name     string    `json:"name"`
+	Workouts []Workout `json:"workouts"`
 }
 
 type Data struct {
-	Name      string
-	Exercises []Exercise
+	Name      string     `json:"name"`
+	Exercises []Exercise `json:"exercises"`
 }
 
 var data *sql.DB = nil
