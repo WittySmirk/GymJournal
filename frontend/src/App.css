@@ -16,7 +16,6 @@
 		align-items: center;
 }
 
-/*
 #modal {
 	display: flex;
 	align-items: center;
@@ -24,7 +23,7 @@
 	justify-content: center;
 	
 	z-index: 1000;
-	background-color:rgba(0,0,0,0.5);
+	background-color:rgba(0,0,0,0.1);
 
 	position: fixed;	
 	top: 0;
@@ -55,4 +54,4 @@
 #modal > .modal-item {
 	padding-top: 5rem;
 	padding-bottom: 5rem;
-}*/
+}

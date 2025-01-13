@@ -4,11 +4,14 @@ This is gym journal. An open source tracking web application inspired by Stupid 
 
 ### Goals
 * Provide a simple user interface to see trends in training data
-* Implement a web application using Go and HTMX mainly using the standard library
+* Implement a web application using Go and React mainly using the standard library
 
 ### Technologies
 * Go
-* HTMX
+* TypeScript 
+** Vite
+** React 
+** React-Router
 * Google Oauth (Goth)
 * Turso
 

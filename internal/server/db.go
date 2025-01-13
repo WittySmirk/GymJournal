@@ -43,9 +43,12 @@ func CreateDb() {
 		fmt.Fprintf(os.Stderr, "failed to open db %s: %s", url, err)
 	}
 	data = db
-	defer data.Close()
 }
 
 func GetDb() *sql.DB {
 	return data
+}
+
+func CloseDb() {
+	data.Close()
 }

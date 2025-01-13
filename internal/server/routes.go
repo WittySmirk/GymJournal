@@ -2,12 +2,12 @@ package server
 
 import (
 	"context"
-	//"database/sql"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	//	"github.com/go-playground/validator/v10"
-	//	"github.com/google/uuid"
-	//	"github.com/markbates/goth/gothic"
+	"github.com/google/uuid"
+	"github.com/markbates/goth/gothic"
 	"net/http"
 	//	"strconv"
 	//	"strings"
@@ -23,6 +23,8 @@ func CorsMiddleWare(n http.HandlerFunc) http.HandlerFunc {
 		n(w, r)
 	}
 }
+
+// TODO: Reimplement this to get and post user data for real
 func GetUserFromContext(r *http.Request) *User {
 	const userKey string = "user"
 	userid, ok := r.Context().Value(userKey).(string)
@@ -109,7 +111,7 @@ func CheckSession(shouldexist bool, h http.HandlerFunc) http.HandlerFunc {
 			h(w, r.WithContext(ctx))
 			return
 		}
-		http.Redirect(w, r, "/app", http.StatusSeeOther)
+		http.Redirect(w, r, "http://localhost:5173/app", http.StatusSeeOther)
 	}
 }
 
@@ -121,9 +123,9 @@ func CreateRoutes() http.Handler {
 	mux.Handle("/public/", http.StripPrefix("/public/", fs))
 
 	//mux.HandleFunc("/", CheckSession(false, index))
-	//mux.HandleFunc("/auth/google/callback", CheckSession(false, CallbackHandle))
+	mux.HandleFunc("/auth/google/callback", CallbackHandle)
 	//mux.HandleFunc("/logout/google", LogoutHandle)
-	//mux.HandleFunc("/auth/google", CheckSession(false, AuthHandle))
+	mux.HandleFunc("/auth/google", CheckSession(false, AuthHandle))
 	mux.HandleFunc("GET /app", CorsMiddleWare(appGet))
 	mux.HandleFunc("POST /app", CorsMiddleWare(appPost))
 
@@ -141,72 +143,71 @@ func index(w http.ResponseWriter, r *http.Request) {
 }
 */
 
-/*
-	func CallbackHandle(w http.ResponseWriter, r *http.Request) {
-		q := r.URL.Query()
-		q.Add("provider", "google")
-		r.URL.RawQuery = q.Encode()
-		tuser, gerr := gothic.CompleteUserAuth(w, r)
-		if gerr != nil {
-			fmt.Fprintln(w, gerr)
-			return
-		}
+func CallbackHandle(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	q.Add("provider", "google")
+	r.URL.RawQuery = q.Encode()
+	tuser, gerr := gothic.CompleteUserAuth(w, r)
+	if gerr != nil {
+		fmt.Fprintln(w, gerr)
+		return
+	}
 
-		// Check if user exists in db
-		var myuser User
-		db := GetDb()
-		dUser := db.QueryRow("SELECT id, google_email FROM user WHERE google_email = ?", tuser.Email)
-		dberr := dUser.Scan(&myuser.Id, &myuser.GoogleEmail) // See if query can fit into a User if not make an error
+	// Check if user exists in db
+	var myuser User
+	db := GetDb()
+	dUser := db.QueryRow("SELECT id, google_email FROM user WHERE google_email = ?", tuser.Email)
+	dberr := dUser.Scan(&myuser.Id, &myuser.GoogleEmail) // See if query can fit into a User if not make an error
 
-		if dberr != nil {
-			if dberr == sql.ErrNoRows {
-				// User does not exist error
-				userId := uuid.New()
-				_, uerr := db.Exec("INSERT INTO user (id, google_email) VALUES (?, ?)", userId, tuser.Email)
+	if dberr != nil {
+		if dberr == sql.ErrNoRows {
+			// User does not exist error
+			userId := uuid.New()
+			_, uerr := db.Exec("INSERT INTO user (id, google_email) VALUES (?, ?)", userId, tuser.Email)
 
-				if uerr != nil {
-					fmt.Fprintln(w, uerr)
-					return
-				}
-				myuser.Id = userId.String()
-
-				// Insert default stuff in
-				_, eerr := db.Exec("INSERT INTO exercise (id, user_id, name) VALUES (?, ?, ?), (?, ?, ?), (?, ?, ?)", uuid.New(), myuser.Id, "Bench", uuid.New(), myuser.Id, "Squat", uuid.New(), myuser.Id, "Deadlift")
-				if eerr != nil {
-					fmt.Fprintln(w, eerr)
-					return
-				}
-			} else {
-				// DB just failed or smthn
-				fmt.Fprintln(w, dberr.Error())
+			if uerr != nil {
+				fmt.Fprintln(w, uerr)
 				return
 			}
-		}
+			myuser.Id = userId.String()
 
-		// Create session
-		fmt.Println(myuser.Id)
-		sessionId := uuid.New()
-		expiresAt := time.Now().Unix() + (15 * 24 * 60 * 60) // Make session expire in 15 days
-		fmt.Println(expiresAt)
-		_, serr := db.Exec("INSERT INTO session (id, user_id, expires_at) VALUES (?, ?, ?)", sessionId, myuser.Id, expiresAt)
-		if serr != nil {
-			fmt.Fprintln(w, serr)
+			// Insert default stuff in
+			_, eerr := db.Exec("INSERT INTO exercise (id, user_id, name) VALUES (?, ?, ?), (?, ?, ?), (?, ?, ?)", uuid.New(), myuser.Id, "Bench", uuid.New(), myuser.Id, "Squat", uuid.New(), myuser.Id, "Deadlift")
+			if eerr != nil {
+				fmt.Fprintln(w, eerr)
+				return
+			}
+		} else {
+			// DB just failed or smthn
+			fmt.Fprintln(w, dberr.Error())
 			return
 		}
-
-		cookie := &http.Cookie{
-			Name:     "session_id",
-			Value:    sessionId.String(),
-			Path:     "/",
-			MaxAge:   15 * 24 * 60 * 60,
-			HttpOnly: true,
-			Secure:   false, // Change to true in production
-		}
-
-		http.SetCookie(w, cookie)
-		http.Redirect(w, r, "/app", http.StatusTemporaryRedirect)
 	}
-*/
+
+	// Create session
+	fmt.Println(myuser.Id)
+	sessionId := uuid.New()
+	expiresAt := time.Now().Unix() + (15 * 24 * 60 * 60) // Make session expire in 15 days
+	fmt.Println(expiresAt)
+	_, serr := db.Exec("INSERT INTO session (id, user_id, expires_at) VALUES (?, ?, ?)", sessionId, myuser.Id, expiresAt)
+	if serr != nil {
+		fmt.Fprintln(w, serr)
+		return
+	}
+
+	cookie := &http.Cookie{
+		Name:     "session_id",
+		Value:    sessionId.String(),
+		Path:     "/",
+		MaxAge:   15 * 24 * 60 * 60,
+		HttpOnly: true,
+		Secure:   false, // Change to true in production
+	}
+
+	http.SetCookie(w, cookie)
+	http.Redirect(w, r, "http://localhost:5173/app", http.StatusTemporaryRedirect)
+}
+
 /*
 func LogoutHandle(w http.ResponseWriter, r *http.Request) {
 	gothic.Logout(w, r)
@@ -214,18 +215,16 @@ func LogoutHandle(w http.ResponseWriter, r *http.Request) {
 }
 */
 
-/*
 func AuthHandle(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	q.Add("provider", "google")
 	r.URL.RawQuery = q.Encode()
 	if _, err := gothic.CompleteUserAuth(w, r); err == nil {
-		http.Redirect(w, r, "/app", http.StatusTemporaryRedirect)
+		http.Redirect(w, r, "http://localhost:5173/app", http.StatusTemporaryRedirect)
 	} else {
 		gothic.BeginAuthHandler(w, r)
 	}
 }
-*/
 
 func appGet(w http.ResponseWriter, r *http.Request) {
 	// TODO: maybe this works i dont remember/know
@@ -284,8 +283,12 @@ func appGet(w http.ResponseWriter, r *http.Request) {
 }
 
 type Body struct {
-	Id      string `json:"id"`
-	Message string `json:"message"`
+	Create bool   `json:"create"`
+	Name   string `json:"name"`
+	Id     string `json:"id"`
+	Weight int    `json:"weight"`
+	Sets   int    `json:"sets"`
+	Reps   int    `json:"reps"`
 }
 
 func appPost(w http.ResponseWriter, r *http.Request) {
@@ -296,7 +299,8 @@ func appPost(w http.ResponseWriter, r *http.Request) {
 	if berr != nil {
 		http.Error(w, berr.Error(), http.StatusBadRequest)
 	}
-	fmt.Println(body.Id, body.Message)
+	// TODO: set up a way to check stuffs
+	fmt.Println(body.Id, body.Name)
 
 	/*
 		myuser := GetUserFromContext(r)

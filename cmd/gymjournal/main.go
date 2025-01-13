@@ -16,6 +16,8 @@ func main() {
 	}
 
 	server.CreateDb()
+	defer server.CloseDb()
+
 	auth.CreateAuth()
 	mux := server.CreateRoutes()
 
