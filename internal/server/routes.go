@@ -14,17 +14,19 @@ import (
 	"time"
 )
 
+/*
 func CorsMiddleWare(n http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+
 		w.Header().Set("Access-Control-Allow-Origin", "*") // Replace "*" with specific origins if needed
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH")
 		w.Header().Set("Access-Control-Allow-Headers", "Accept, Authorization, Content-Type, X-CSRF-Token")
-		w.Header().Set("Access-Control-Allow-Credentials", "false") // Set to "true" if credentials are required
-		n(w, r)
+		w.Header().Set("Access-Control-Allow-Credentials", "true") // Set to "true" if credentials are required
+n(w, r)
 	}
 }
+*/
 
-// TODO: Reimplement this to get and post user data for real
 func GetUserFromContext(r *http.Request) *User {
 	const userKey string = "user"
 	userid, ok := r.Context().Value(userKey).(string)
@@ -43,6 +45,12 @@ func GetUserFromContext(r *http.Request) *User {
 
 func CheckSession(shouldexist bool, h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		// TODO: Figure out environment variables for this
+		w.Header().Set("Access-Control-Allow-Origin", "http://localhost:5173") // Replace "*" with specific origins if needed
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH")
+		w.Header().Set("Access-Control-Allow-Headers", "Accept, Authorization, Content-Type, X-CSRF-Token")
+		w.Header().Set("Access-Control-Allow-Credentials", "true")
+
 		db := GetDb()
 		sessionId, err := r.Cookie("session_id")
 		if err != nil {
@@ -51,6 +59,7 @@ func CheckSession(shouldexist bool, h http.HandlerFunc) http.HandlerFunc {
 					h(w, r)
 					return
 				}
+				fmt.Println("this is the redirect")
 				http.Redirect(w, r, "/", http.StatusSeeOther)
 			}
 			fmt.Fprintln(w, err.Error())
@@ -122,26 +131,14 @@ func CreateRoutes() http.Handler {
 	fs := http.FileServer(http.Dir("public"))
 	mux.Handle("/public/", http.StripPrefix("/public/", fs))
 
-	//mux.HandleFunc("/", CheckSession(false, index))
-	mux.HandleFunc("/auth/google/callback", CallbackHandle)
-	//mux.HandleFunc("/logout/google", LogoutHandle)
+	mux.HandleFunc("/auth/google/callback", CheckSession(false, CallbackHandle))
+	mux.HandleFunc("/logout/google", LogoutHandle)
 	mux.HandleFunc("/auth/google", CheckSession(false, AuthHandle))
-	mux.HandleFunc("GET /app", CorsMiddleWare(appGet))
-	mux.HandleFunc("POST /app", CorsMiddleWare(appPost))
+	mux.HandleFunc("GET /app", CheckSession(true, appGet))
+	mux.HandleFunc("POST /app", CheckSession(true, appPost))
 
 	return mux
 }
-
-/*
-func index(w http.ResponseWriter, r *http.Request) {
-	templ, err := template.ParseFiles("templates/index.html")
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	templ.Execute(w, nil)
-}
-*/
 
 func CallbackHandle(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
@@ -208,12 +205,10 @@ func CallbackHandle(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "http://localhost:5173/app", http.StatusTemporaryRedirect)
 }
 
-/*
 func LogoutHandle(w http.ResponseWriter, r *http.Request) {
 	gothic.Logout(w, r)
 	http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
 }
-*/
 
 func AuthHandle(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
@@ -227,25 +222,45 @@ func AuthHandle(w http.ResponseWriter, r *http.Request) {
 }
 
 func appGet(w http.ResponseWriter, r *http.Request) {
-	// TODO: maybe this works i dont remember/know
-	/*
-			myuser := GetUserFromContext(r)
-			if myuser == nil {
-				fmt.Println("error context was nil")
-				return
-			}
+	myuser := GetUserFromContext(r)
+	if myuser == nil {
+		fmt.Println("error context was nil")
+		return
+	}
+	fmt.Println(myuser.Id)
 
+	db := GetDb()
 
-		db := GetDb()
-		var name sql.NullString
-		dUser := db.QueryRow("SELECT name FROM user WHERE id = ?", myuser.Id)
-		dUerr := dUser.Scan(&name)
-		if dUerr != nil {
-			fmt.Fprintln(w, dUerr.Error())
+	var name sql.NullString
+
+	dUser := db.QueryRow("SELECT name FROM user WHERE id = ?", myuser.Id)
+
+	duNerr := dUser.Scan(&name)
+	if duNerr != nil {
+		fmt.Fprintln(w, duNerr.Error())
+		return
+	}
+
+	myuser.Name = name.String
+
+	var exercises []Exercise
+	dExcersises, deError := db.Query("SELECT id, name FROM exercise WHERE user_id = ?", myuser.Id)
+	if deError != nil {
+		fmt.Fprintln(w, deError.Error())
+		return
+	}
+
+	for dExcersises.Next() {
+		var ex Exercise
+		err := dExcersises.Scan(&ex.Id, &ex.Name)
+		if err != nil {
+			fmt.Fprintln(w, err.Error())
 			return
 		}
+		exercises = append(exercises, ex)
+	}
 
-
+	/*
 			if !name.Valid {
 				// If name is not valid ask for name
 				templ, err := template.ParseFiles("templates/makename.html")
@@ -255,23 +270,12 @@ func appGet(w http.ResponseWriter, r *http.Request) {
 				}
 				templ.Execute(w, nil)
 			}
-
-
 		myuser.Name = name.String
 	*/
 
 	data := Data{
-		Name: "wyatt",
-		Exercises: []Exercise{
-			{
-				Id:   "0",
-				Name: "bench",
-			},
-			{
-				Id:   "1",
-				Name: "squat",
-			},
-		},
+		Name:      myuser.Name,
+		Exercises: exercises,
 	}
 
 	jsonbytes, jerr := json.Marshal(data)

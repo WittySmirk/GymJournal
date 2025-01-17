@@ -27,7 +27,12 @@ function App() {
   // TODO: Maybe cache this or smthn idk
   useEffect(() => {
     async function fetchApi() {
-      const raw = await fetch("http://localhost:8080/app");
+      // TODO: Figure out environment variables
+      const raw = await fetch("http://localhost:8080/app", {
+        credentials: "include",
+      });
+
+
       const json = await raw.json();
       setData(json);
     }
