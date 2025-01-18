@@ -272,26 +272,43 @@ func appGet(w http.ResponseWriter, r *http.Request) {
 		myuser.Name = name.String
 	*/
 
+	w.Header().Set("Content-Type", "application/json")
+	if !name.Valid {
+		data := Data{
+			NameNotValid: true,
+		}
+
+		jsonbytes, jerr := json.Marshal(data)
+		if jerr != nil {
+			http.Error(w, jerr.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Write(jsonbytes)
+		return
+	}
+
 	data := Data{
-		Name:      myuser.Name,
-		Exercises: exercises,
+		NameNotValid: false,
+		Name:         myuser.Name,
+		Exercises:    exercises,
 	}
 
 	jsonbytes, jerr := json.Marshal(data)
 	if jerr != nil {
 		http.Error(w, jerr.Error(), http.StatusInternalServerError)
+		return
 	}
-	w.Header().Set("Content-Type", "application/json")
 	w.Write(jsonbytes)
 }
 
 type Body struct {
-	Create bool   `json:"create"`
-	Name   string `json:"name"`
-	Id     string `json:"id"`
-	Weight int    `json:"weight"`
-	Sets   int    `json:"sets"`
-	Reps   int    `json:"reps"`
+	Create     bool   `json:"create"`
+	CreateName bool   `json:"createName"`
+	Name       string `json:"name"`
+	Id         string `json:"id"`
+	Weight     int    `json:"weight"`
+	Sets       int    `json:"sets"`
+	Reps       int    `json:"reps"`
 }
 
 func appPost(w http.ResponseWriter, r *http.Request) {
@@ -309,6 +326,21 @@ func appPost(w http.ResponseWriter, r *http.Request) {
 	}
 
 	validate := validator.New()
+
+	if body.CreateName {
+		verr := validate.Var(body.Name, "ascii")
+		if verr != nil {
+			http.Error(w, "name not accepted", http.StatusNotAcceptable)
+		}
+		db := GetDb()
+		_, derr := db.Exec("UPDATE user SET name = ? WHERE user_id = ?", body.Name, myuser.Id)
+		if derr != nil {
+			fmt.Fprintln(w, derr.Error())
+			return
+		}
+		return
+	}
+
 	if body.Create {
 		verr := validate.Var(body.Name, "ascii")
 		if verr != nil {

@@ -30,8 +30,9 @@ type Exercise struct {
 }
 
 type Data struct {
-	Name      string     `json:"name"`
-	Exercises []Exercise `json:"exercises"`
+	NameNotValid bool       `json:"nameNotValid"`
+	Name         string     `json:"name"`
+	Exercises    []Exercise `json:"exercises"`
 }
 
 var data *sql.DB = nil
