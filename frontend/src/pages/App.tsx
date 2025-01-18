@@ -24,7 +24,7 @@ type Data = {
 function App() {
   const [data, setData] = useState<Data | undefined>(undefined);
 
-  // TODO: Maybe cache this or smthn idk
+  // TODO: Refetch when modal form submitted without refreshing page
   useEffect(() => {
     async function fetchApi() {
       // TODO: Figure out environment variables

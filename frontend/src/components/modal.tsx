@@ -21,7 +21,8 @@ function Modal(props: { create: boolean, id?: string, name?: string, resetModal:
 
       await fetch("http://localhost:8080/app", {
         method: "POST",
-        body: JSON.stringify(d)
+        body: JSON.stringify(d),
+        credentials: "include"
       });
 
       props.resetModal();
@@ -42,18 +43,19 @@ function Modal(props: { create: boolean, id?: string, name?: string, resetModal:
     };
     await fetch("http://localhost:8080/app", {
       method: "POST",
-      body: JSON.stringify(d)
+      body: JSON.stringify(d),
+      credentials: "include"
     });
 
     props.resetModal();
   }
   return (
     <div id="modal">
-      {
-        props.create ?
-          <>
-            {/* @ts-ignore */}
-            <form className="modal-form" action={modalAction}>
+      {/* @ts-ignore */}
+      <form className="modal-form" action={modalAction}>
+        {
+          props.create ?
+            <>
               <h1>{props.name}</h1>
               <label className="modal-item" htmlFor="name">Exercise Name</label>
               <input className="modal-item" type="text" id="name" name="name" required />
@@ -62,12 +64,9 @@ function Modal(props: { create: boolean, id?: string, name?: string, resetModal:
                 <button type="button" onClick={props.resetModal}>Close</button>
               </div>
 
-            </form>
-          </>
-          :
-          <>
-            {/* @ts-ignore */}
-            <form className="modal-form" action={modalAction}>
+            </>
+            :
+            <>
               <h1>{props.name}</h1>
               <label className="modal-item" htmlFor="weight">Weight</label>
               <input className="modal-item" type="text" id="weight" name="weight" required />
@@ -79,10 +78,10 @@ function Modal(props: { create: boolean, id?: string, name?: string, resetModal:
                 <input type="submit" value="submit" />
                 <button type="button" onClick={props.resetModal}>Close</button>
               </div>
-            </form >
-          </>
-      }
-    </div>
+            </>
+        }
+      </form >
+    </div >
   );
 }
 

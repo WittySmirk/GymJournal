@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	//	"github.com/go-playground/validator/v10"
+	"github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
 	"github.com/markbates/goth/gothic"
 	"net/http"
@@ -60,7 +60,7 @@ func CheckSession(shouldexist bool, h http.HandlerFunc) http.HandlerFunc {
 					return
 				}
 				fmt.Println("this is the redirect")
-				http.Redirect(w, r, "/", http.StatusSeeOther)
+				http.Redirect(w, r, "http://localhost:5173/", http.StatusSeeOther)
 			}
 			fmt.Fprintln(w, err.Error())
 			return
@@ -227,7 +227,6 @@ func appGet(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("error context was nil")
 		return
 	}
-	fmt.Println(myuser.Id)
 
 	db := GetDb()
 
@@ -296,6 +295,11 @@ type Body struct {
 }
 
 func appPost(w http.ResponseWriter, r *http.Request) {
+	myuser := GetUserFromContext(r)
+	if myuser == nil {
+		fmt.Println("error context was nil")
+		return
+	}
 	decoder := json.NewDecoder(r.Body)
 
 	var body Body
@@ -303,30 +307,35 @@ func appPost(w http.ResponseWriter, r *http.Request) {
 	if berr != nil {
 		http.Error(w, berr.Error(), http.StatusBadRequest)
 	}
-	// TODO: set up a way to check stuffs
-	fmt.Println(body.Id, body.Name)
 
-	/*
-		myuser := GetUserFromContext(r)
-		if myuser == nil {
-			fmt.Println("error context was nil")
-			return
-		}
-
-		validate := validator.New()
-		name := r.FormValue("name")
-		verr := validate.Var(name, "ascii")
+	validate := validator.New()
+	if body.Create {
+		verr := validate.Var(body.Name, "ascii")
 		if verr != nil {
 			http.Error(w, "name not accepted", http.StatusNotAcceptable)
 			return
 		}
 
 		db := GetDb()
-		_, derr := db.Exec("UPDATE user SET name = ? WHERE id = ?", name, myuser.Id)
+		_, derr := db.Exec("INSERT INTO exercise (id, user_id, name) VALUES (?, ?, ?)", uuid.New(), myuser.Id, body.Name)
 		if derr != nil {
 			fmt.Fprintln(w, derr.Error())
 			return
 		}
-		http.Redirect(w, r, "/app", http.StatusSeeOther)
-	*/
+
+		return
+	}
+
+	verr := validate.StructPartial(body, "Body.Id Body.Weight Body.Sets Body.Reps")
+	if verr != nil {
+		http.Error(w, "not accepted", http.StatusNotAcceptable)
+		return
+	}
+
+	db := GetDb()
+	_, derr := db.Exec("INSERT INTO workout (id, user_id, exercise_id, weight, sets, reps, time) VALUES (?, ?, ?, ?, ?, ?, ?)", uuid.New(), myuser.Id, body.Id, body.Weight, body.Sets, body.Reps, time.Now().Unix())
+	if derr != nil {
+		fmt.Fprintln(w, derr.Error())
+		return
+	}
 }
