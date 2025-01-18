@@ -107,7 +107,6 @@ func CheckSession(shouldexist bool, h http.HandlerFunc) http.HandlerFunc {
 			}
 
 			const userKey string = "user"
-			// TODO: Might want to include name in the context if more templates than app eventually need it
 			var myuser User
 			dUser := db.QueryRow("SELECT user_id FROM session WHERE id = ?", mysession.Id)
 			dUerr := dUser.Scan(&myuser.Id)
@@ -124,7 +123,6 @@ func CheckSession(shouldexist bool, h http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-// TODO: Refactor to react and not htmx
 func CreateRoutes() http.Handler {
 	mux := http.NewServeMux()
 
@@ -206,8 +204,9 @@ func CallbackHandle(w http.ResponseWriter, r *http.Request) {
 }
 
 func LogoutHandle(w http.ResponseWriter, r *http.Request) {
+	// TODO: since we are manually doing sessions, we need to delete the sessions ourselves
 	gothic.Logout(w, r)
-	http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
+	http.Redirect(w, r, "http://localhost:5173/", http.StatusTemporaryRedirect)
 }
 
 func AuthHandle(w http.ResponseWriter, r *http.Request) {
@@ -259,6 +258,7 @@ func appGet(w http.ResponseWriter, r *http.Request) {
 		exercises = append(exercises, ex)
 	}
 
+	// TODO: Make name shit
 	/*
 			if !name.Valid {
 				// If name is not valid ask for name

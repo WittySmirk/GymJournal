@@ -1,3 +1,15 @@
+.navBar {
+	display: flex;
+	align-items: center;
+	justify-content: between;
+	flex-direction: column;
+}
+
+.navBar a {
+	position: absolute;
+	top: 2.75rem;
+	right: 6rem;
+}
 
 .exerciseButtonGrid {
 		display: grid;

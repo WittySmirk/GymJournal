@@ -24,44 +24,43 @@ type Data = {
 function App() {
   const [data, setData] = useState<Data | undefined>(undefined);
 
-  // TODO: Refetch when modal form submitted without refreshing page
+  async function fetchApi() {
+    // TODO: Figure out environment variables
+    const raw = await fetch("http://localhost:8080/app", {
+      credentials: "include",
+    });
+
+
+    const json = await raw.json();
+    setData(json);
+  }
+
   useEffect(() => {
-    async function fetchApi() {
-      // TODO: Figure out environment variables
-      const raw = await fetch("http://localhost:8080/app", {
-        credentials: "include",
-      });
-
-
-      const json = await raw.json();
-      setData(json);
-    }
     fetchApi();
   }, []);
-
 
   return (
     <>
       {data ? (
         <>
-          <h1>
-            {data?.name}
-          </h1>
+          <div className="navBar">
+            <h1>
+              {data?.name + "'s Gym Journal"}
+            </h1>
+            <a href="http://localhost:8080/logout/google">logout</a>
+          </div>
           <div className="exerciseButtonGrid">
-
-
             {data.exercises.map((e, k) => {
               return <ExerciseButton key={k} create={false} name={e.name} id={e.id} />
             })}
-            <ExerciseButton create={true} />
-
-
+            <ExerciseButton create={true} fetchApi={fetchApi} />
           </div >
         </>
 
       ) : (
         <div>No data loaded :(</div>
-      )}
+      )
+      }
 
 
     </>

@@ -3,7 +3,7 @@ import "../App.css";
 import { useState } from 'react';
 import Modal from "../components/modal.tsx"
 
-function ExerciseButton(props: { create: boolean, name?: string, id?: string }) {
+function ExerciseButton(props: { create: boolean, name?: string, id?: string, fetchApi?: VoidFunction }) {
   const [modal, setModal] = useState<boolean>(false);
   /*
   async function postToServer() {
@@ -29,8 +29,10 @@ function ExerciseButton(props: { create: boolean, name?: string, id?: string }) 
       </button>
 
       {modal ?
-
-        <Modal create={props.create} id={props.id} name={props.name} resetModal={() => setModal(false)} />
+        <Modal create={props.create} id={props.id} name={props.name} resetModal={() => {
+          setModal(false)
+          props.fetchApi!()
+        }} />
         : <></>}
     </>
   );
